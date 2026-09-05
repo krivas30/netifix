@@ -1,0 +1,137 @@
+---
+title: "Netflix Showdown: Action vs. Romance"
+subtitle: "Which genre has dominated Netflix releases over the past decade?"
+author: "Data Science Project"
+format:
+  html:
+    theme: darkly
+    toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## The Showdown
+
+Are we living in an era of high-octane explosions or heartfelt love stories? 
+Let's explore Netflix's catalog to see whether Action or Romance films take the crown.
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(plotly)
+library(DT)
+
+# Load the Kaggle Netflix dataset
+netflix <- read_csv("netflix_titles.csv", show_col_types = FALSE)
+
+# Filter for movies released between 2011 and 2020
+films <- netflix |>
+  filter(type == "Movie", release_year >= 2011, release_year <= 2020) |>
+  mutate(
+    genre = case_when(
+      str_detect(listed_in, "Action & Adventure") & str_detect(listed_in, "Romantic Movies") ~ "Both",
+      str_detect(listed_in, "Action & Adventure") ~ "Action",
+      str_detect(listed_in, "Romantic Movies") ~ "Romance",
+      TRUE ~ "Other"
+    )
+  ) |>
+  filter(genre %in% c("Action", "Romance"))
+
+counts_by_year <- films |>
+  count(release_year, genre)
+```
+
+## Tale of the Tape: 10-Year Totals
+
+```{r}
+#| label: totals
+total_action <- sum(films$genre == "Action")
+total_romance <- sum(films$genre == "Romance")
+```
+
+Over the full 10-year window (2011–2020):
+
+- 💥 **Action Films:** `r total_action`
+- ❤️ **Romance Films:** `r total_romance`
+
+Overall, **Action** edges out Romance in overall catalog volume! But how has this rivalry shifted year by year? Hover over the bars below to see annual releases:
+
+```{r}
+#| label: interactive-plot
+p <- ggplot(counts_by_year, aes(
+  x = factor(release_year), 
+  y = n, 
+  fill = genre,
+  text = paste0("Year: ", release_year, "<br>Genre: ", genre, "<br>Films: ", n)
+)) +
+  geom_col(position = position_dodge(preserve = "single")) +
+  scale_fill_manual(values = c("Action" = "#E50914", "Romance" = "#FF69B4")) +
+  labs(
+    title = "Annual Releases on Netflix (2011–2020)",
+    x = "Release Year",
+    y = "Number of Films Released",
+    fill = "Genre"
+  ) +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+```
+
+## The Cumulative Race Over Time
+
+Did Action lead the entire time, or was it a neck-and-neck contest? Let's track the running cumulative total of releases year by year:
+
+```{r}
+#| label: cumulative-race
+cumulative_data <- counts_by_year |>
+  complete(release_year = 2011:2020, genre, fill = list(n = 0)) |>
+  arrange(genre, release_year) |>
+  group_by(genre) |>
+  mutate(total_to_date = cumsum(n)) |>
+  ungroup()
+
+p_race <- ggplot(cumulative_data, aes(
+  x = release_year, 
+  y = total_to_date, 
+  color = genre,
+  group = genre,
+  text = paste0("Year: ", release_year, "<br>Genre: ", genre, "<br>Total: ", total_to_date)
+)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = c("Action" = "#E50914", "Romance" = "#FF69B4")) +
+  scale_x_continuous(breaks = seq(2011, 2020, by = 1)) +
+  labs(
+    title = "Cumulative Releases: Action vs Romance",
+    x = "Year",
+    y = "Cumulative Total Movies",
+    color = "Genre"
+  ) +
+  theme_minimal()
+
+ggplotly(p_race, tooltip = "text")
+```
+
+## Movie Explorer: Search & Filter
+
+Want to see which movies are behind the numbers? Use the search bar below to find your favorite films, or filter by genre and year:
+
+```{r}
+#| label: movie-table
+films |>
+  select(Title = title, Genre = genre, Year = release_year, Rating = rating, Duration = duration, Description = description) |>
+  datatable(
+    filter = "top",
+    options = list(
+      pageLength = 8,
+      autoWidth = TRUE,
+      searchHighlight = TRUE
+    ),
+    rownames = FALSE,
+    class = "cell-border stripe"
+  )
+```
+
+
