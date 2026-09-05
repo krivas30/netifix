@@ -22,6 +22,7 @@ Let's explore Netflix's catalog to see whether Action or Romance films take the 
 library(tidyverse)
 library(plotly)
 library(DT)
+library(jsonlite)
 
 # Load the Kaggle Netflix dataset
 netflix <- read_csv("netflix_titles.csv", show_col_types = FALSE)
@@ -67,51 +68,148 @@ p <- ggplot(counts_by_year, aes(
   text = paste0("Year: ", release_year, "<br>Genre: ", genre, "<br>Films: ", n)
 )) +
   geom_col(position = position_dodge(preserve = "single")) +
-  scale_fill_manual(values = c("Action" = "#E50914", "Romance" = "#FF69B4")) +
+  scale_fill_manual(values = c("Action" = "#FF2A54", "Romance" = "#00E5FF")) +
   labs(
-    title = "Annual Releases on Netflix (2011–2020)",
+    title = "Annual Releases: Action vs Romance",
     x = "Release Year",
-    y = "Number of Films Released",
+    y = "Films Released",
     fill = "Genre"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    plot.background = element_rect(fill = "#141414", color = NA),
+    panel.background = element_rect(fill = "#141414", color = NA),
+    text = element_text(color = "#FFFFFF"),
+    axis.text = element_text(color = "#CCCCCC"),
+    panel.grid.major = element_line(color = "#2A2A2A"),
+    panel.grid.minor = element_blank()
+  )
 
-ggplotly(p, tooltip = "text")
+ggplotly(p, tooltip = "text") |>
+  layout(
+    paper_bgcolor = "#141414",
+    plot_bgcolor = "#141414",
+    font = list(color = "#FFFFFF")
+  )
 ```
 
-## The Cumulative Race Over Time
+## The Animated Bar Race (2011–2020)
 
-Did Action lead the entire time, or was it a neck-and-neck contest? Let's track the running cumulative total of releases year by year:
+Press **Play** below to watch the race unfold year by year!
 
 ```{r}
-#| label: cumulative-race
-cumulative_data <- counts_by_year |>
+#| label: animated-race
+race_data <- counts_by_year |>
   complete(release_year = 2011:2020, genre, fill = list(n = 0)) |>
   arrange(genre, release_year) |>
   group_by(genre) |>
   mutate(total_to_date = cumsum(n)) |>
   ungroup()
 
-p_race <- ggplot(cumulative_data, aes(
-  x = release_year, 
-  y = total_to_date, 
-  color = genre,
-  group = genre,
-  text = paste0("Year: ", release_year, "<br>Genre: ", genre, "<br>Total: ", total_to_date)
-)) +
-  geom_line(linewidth = 1.2) +
-  geom_point(size = 2.5) +
-  scale_color_manual(values = c("Action" = "#E50914", "Romance" = "#FF69B4")) +
-  scale_x_continuous(breaks = seq(2011, 2020, by = 1)) +
-  labs(
-    title = "Cumulative Releases: Action vs Romance",
-    x = "Year",
-    y = "Cumulative Total Movies",
-    color = "Genre"
-  ) +
-  theme_minimal()
+plot_ly(
+  race_data,
+  x = ~total_to_date,
+  y = ~genre,
+  color = ~genre,
+  colors = c("Action" = "#FF2A54", "Romance" = "#00E5FF"),
+  frame = ~release_year,
+  text = ~paste0(genre, ": ", total_to_date, " films"),
+  hoverinfo = "text",
+  type = "bar",
+  orientation = "h"
+) |>
+  layout(
+    paper_bgcolor = "#141414",
+    plot_bgcolor = "#141414",
+    xaxis = list(title = "Cumulative Total Films", range = c(0, 500), color = "#FFFFFF", gridcolor = "#2A2A2A"),
+    yaxis = list(title = "", color = "#FFFFFF"),
+    font = list(color = "#FFFFFF"),
+    showlegend = FALSE
+  ) |>
+  animation_opts(frame = 800, transition = 350, redraw = FALSE) |>
+  animation_button(x = 0, y = -0.2)
+```
 
-ggplotly(p_race, tooltip = "text")
+## 🍿 Mood Roulette: What Should You Stream Tonight?
+
+Can't decide what to watch? Pick your vibe below and let the algorithm deal you a random movie from Netflix's 10-year collection!
+
+```{r}
+#| label: roulette-data
+#| results: asis
+films_subset <- films |>
+  select(title, genre, release_year, rating, duration, description)
+
+cat(paste0(
+  "<script>const filmsData = ",
+  toJSON(films_subset),
+  ";</script>"
+))
+```
+
+```{=html}
+<div style="background: linear-gradient(145deg, #1f1f1f, #141414); border: 2px solid #2a2a2a; border-radius: 16px; padding: 28px; margin: 25px 0; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6);">
+  <p style="color: #e0e0e0; font-size: 1.1rem; margin-bottom: 20px;">
+    Feeling adrenaline-fueled explosions, or heartstrings and butterflies?
+  </p>
+  
+  <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+    <button id="btn-action" style="background: #FF2A54; color: #FFFFFF; border: none; padding: 12px 28px; border-radius: 50px; font-weight: 700; cursor: pointer; font-size: 1rem; box-shadow: 0 0 18px rgba(255, 42, 84, 0.45); transition: transform 0.15s ease;">
+      💥 Spin Action Movie
+    </button>
+    <button id="btn-romance" style="background: #00E5FF; color: #0a0a0a; border: none; padding: 12px 28px; border-radius: 50px; font-weight: 700; cursor: pointer; font-size: 1rem; box-shadow: 0 0 18px rgba(0, 229, 255, 0.45); transition: transform 0.15s ease;">
+      💖 Spin Romance Movie
+    </button>
+  </div>
+
+  <div id="roulette-card" style="background: #181818; border-radius: 12px; padding: 22px; border-left: 6px solid #FF2A54; max-width: 680px; margin: 0 auto; text-align: left; display: none; box-shadow: 0 6px 20px rgba(0,0,0,0.5);">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+      <h3 id="r-title" style="color: #ffffff; margin: 0; font-size: 1.4rem;">Movie Title</h3>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <span id="r-genre" style="background: #FF2A54; color: #fff; padding: 3px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">Action</span>
+        <span id="r-year" style="background: #2a2a2a; color: #fff; padding: 3px 10px; border-radius: 6px; font-size: 0.8rem;">2020</span>
+        <span id="r-rating" style="background: #2a2a2a; color: #bbb; padding: 3px 10px; border-radius: 6px; font-size: 0.8rem;">PG-13</span>
+        <span id="r-duration" style="background: #2a2a2a; color: #bbb; padding: 3px 10px; border-radius: 6px; font-size: 0.8rem;">115 min</span>
+      </div>
+    </div>
+    <p id="r-desc" style="color: #d1d5db; margin: 0; line-height: 1.6; font-size: 1rem;">Movie synopsis will appear here.</p>
+  </div>
+</div>
+
+<script>
+function spinMovie(genre) {
+  if (typeof filmsData === 'undefined') return;
+  const pool = filmsData.filter(m => m.genre === genre);
+  if (!pool.length) return;
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+
+  const card = document.getElementById('roulette-card');
+  const title = document.getElementById('r-title');
+  const genreBadge = document.getElementById('r-genre');
+  const year = document.getElementById('r-year');
+  const rating = document.getElementById('r-rating');
+  const duration = document.getElementById('r-duration');
+  const desc = document.getElementById('r-desc');
+
+  title.textContent = picked.title;
+  genreBadge.textContent = picked.genre;
+  year.textContent = picked.release_year;
+  rating.textContent = picked.rating || 'Unrated';
+  duration.textContent = picked.duration || '';
+  desc.textContent = picked.description;
+
+  const color = picked.genre === 'Action' ? '#FF2A54' : '#00E5FF';
+  const textCol = picked.genre === 'Action' ? '#FFFFFF' : '#0a0a0a';
+  card.style.borderLeftColor = color;
+  genreBadge.style.background = color;
+  genreBadge.style.color = textCol;
+
+  card.style.display = 'block';
+}
+
+document.getElementById('btn-action').addEventListener('click', () => spinMovie('Action'));
+document.getElementById('btn-romance').addEventListener('click', () => spinMovie('Romance'));
+</script>
 ```
 
 ## Movie Explorer: Search & Filter
